@@ -1,0 +1,11 @@
+pushq in
+cmpl in, in
+movl in, out
+movq in, out
+leaq in, out
+xorq in, inout
+addq in, inout
+subq in, inout
+xorl in, inout
+addl in, inout
+subl in, inout
