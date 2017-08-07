@@ -117,23 +117,70 @@ def createBasicBlocks(lines):
 	
 	ctrFlowCmds = ["jmp", "ret", "je", "jle", "jge","jl", "jg", "jne"]
 	
+	labels = {}
 	for line in lines:
 		if ":" in line and line[0] is '.':
 			if len(basicBlock) > 0:
-				basicBlocks += [basicBlock];
-				
+				# pravljenje novog bazicnog bloka
+				basicBlocks += [(basicBlock, [], [])];
+			
 			basicBlock = []
+				
+			# zapamti labelu bloka
+			label = line.split(':')[0]
+			labels[label] = len(basicBlocks)
 		
 		basicBlock += [line];
 		
 		if any(cmd in line for cmd in ctrFlowCmds):
 			if len(basicBlock) > 0:
-				basicBlocks += [basicBlock];
+				# pravljenje novog bazicnog bloka
+				basicBlocks += [(basicBlock, [], [])];
 				
 			basicBlock = []
-			
+    
 	if len(basicBlock) > 0:
-		basicBlocks += [basicBlock];
+		basicBlocks += [(basicBlock, [], [])];
+    
+	index = 0
+	basicBlockLen = 0;
+	for i, line in enumerate(lines):
+		if ":" in line and line[0] is '.':
+			if basicBlockLen > 0:
+				# updaejt starog bazicnog bloka
+				if i != 0 and 'jmp' not in lines[i-1]:
+					oBasicBlock, oinn, oout =  basicBlocks[index]
+					oout += [index+1]
+					basicBlocks[index] = (oBasicBlock, oinn, oout)
+					
+					oBasicBlock, oinn, oout =  basicBlocks[index+1]
+					oinn += [index]
+					basicBlocks[index+1] = (oBasicBlock, oinn, oout)
+					
+				index += 1
+				
+			basicBlockLen = 0
+		
+		basicBlockLen += 1
+		
+		if any(cmd in line for cmd in ctrFlowCmds):
+			if basicBlockLen > 0:
+				# updaejt starog bazicnog bloka
+				if 'ret' not in line:
+					label = line.split()[1]
+					pos = labels[label]
+					
+					oBasicBlock, oinn, oout =  basicBlocks[pos]
+					oinn += [index]
+					basicBlocks[pos] = (oBasicBlock, oinn, oout)
+					
+					oBasicBlock, oinn, oout =  basicBlocks[index]
+					oinn += [pos]
+					basicBlocks[index] = (oBasicBlock, oinn, oout)
+					
+				index += 1
+				
+			basicBlockLen = 0
 		
 	return basicBlocks
 
@@ -156,6 +203,42 @@ def createInOutForBasicBlock(basicBlock):
 			
 	return inOutBasicBlock
 
+def livenessOfBasicBlock(inOutBasicBlock):
+	inn = set()
+	out = set()
+	for use, deff in reversed(inOutBasicBlock):
+		inn.update(use)
+		out.update(deff)
+		
+	return (inn, out)
+
+def liveness(blocks):
+	inn = [set()] * len(blocks)
+	out = [set()] * len(blocks)
+	
+	condition = True
+	while(condition):
+		condition = False
+		for n in range(len(blocks)):
+			use = blocks[n][0]
+			deff = blocks[n][1]
+			succ = blocks[n][2]
+			
+			innp = inn[n]
+			outp = out[n]
+			
+			inn[n] = out[n] - deff
+			inn[n].update(use)
+			
+			out[n] = set()
+			for index in succ:
+				out[n].update(inn[index-1])
+				
+			if(out[n] != outp or inn[n] != innp):
+				condition = True
+				
+	return (inn,out)
+
 if __name__ == '__main__':
 
 	if len(sys.argv) != 2:
@@ -166,7 +249,9 @@ if __name__ == '__main__':
 		
 	# Print of basic blocks
 	# in znaci da citas iz te promenjive a out da pises u nju
-	for block in basicBlocks:
+	
+	blocks = []
+	for block, binn, bout in basicBlocks:
 		inOutBlock = createInOutForBasicBlock(block)
 		if len(inOutBlock) == 0:
 			continue
@@ -174,6 +259,17 @@ if __name__ == '__main__':
 		print "; BAZICNI BLOK"
 		for inn, out in inOutBlock:
 			print ' in: %-10s out: %-10s' % (', '.join(inn), ', '.join(out))
-		print "; KRAJ BAZICNI BLOK\n"
+		print "; KRAJ BAZICNI BLOK"
+		print "; in blokovi: [%s] out blokovi: [%s]" % (', '.join(str(i) for i in (binn)), ', '.join(str(i) for i in (bout)))
 		
+		use, deff = livenessOfBasicBlock(inOutBlock)
+		print "; use: [%s] def: [%s]\n" % (', '.join(use), ', '.join(deff))
+		
+		blocks += [(use, deff, bout)]
+		
+	
+	inn, out = liveness(blocks)
+	for n in range(len(blocks)):
+		print "; BLOCK in: [%s] out: [%s]" % (', '.join(inn[n]), ', '.join(out[n]))
+	
 	
